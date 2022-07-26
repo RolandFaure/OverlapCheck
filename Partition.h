@@ -33,7 +33,8 @@ public :
     std::vector<float> getConfidence();
     std::vector<int> getMore();
     std::vector<int> getLess();
-    void augmentPartition(Column &newPar, int pos);
+    void augmentPartition(Column &supplementaryPartition, int pos);
+    void augmentPartition2(Column &supplementaryPartition, bool n01unimportant, bool n10unimportant, int pos);
     void mergePartition(Partition &p, short phased); 
     void mergePartition(Partition &p); 
     bool isInformative(float errorRate, bool lastReadBiased);
@@ -47,9 +48,9 @@ public :
     int get_right();
 
     void flipPartition(); //transforms all 1s in 0s and vice-versa
+    void increaseSupportivePositions();
 
     void new_corrected_partition(std::vector<short> newPartition); //Changes partition without changing anything else !!
-
 private :
     std::vector <int> readIdx; //the list of reads is sparse : here are the filled indices (ordered)
     std::vector<short> mostFrequentBases; // at each position, 3 possibilities : 1 for allele1, -1 for allele2 and 0 for non-attributed-yet
@@ -62,6 +63,8 @@ private :
 
     int pos_left; //position of leftmost position of the partition on the consensus
     int pos_right; //position of the rightmost position of the partition on the consensus
+    int numberOfSupportivePositions;
+
 };
 
 #endif

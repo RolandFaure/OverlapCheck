@@ -16,6 +16,7 @@ struct distancePartition{
     int n01;
     int n10;
     int n11;
+    float x00, x01, x10, x11;  //same as the n but weighted
     float score;
     short phased; // worth -1 or 1
     bool augmented; //to know if the partition was augmented or not

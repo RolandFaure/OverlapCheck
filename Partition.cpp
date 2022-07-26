@@ -23,7 +23,10 @@ Partition::Partition(){
     moreFrequence = {};
     lessFrequence = {};
     numberOfOccurences = 0;
+    numberOfSupportivePositions = 0;
     conf_score = 0;
+    pos_left=-1;
+    pos_right=-1;
 }
 
 Partition::Partition(Column& snp, int pos){
@@ -87,6 +90,7 @@ Partition::Partition(Column& snp, int pos){
     }
 
     numberOfOccurences = 1;
+    numberOfSupportivePositions = 0;
 
 }
 
@@ -101,7 +105,7 @@ bool Partition::isInformative(float errorRate, bool lastReadBiased){
         adjust = 1;
     }
 
-    int numberOfReads = 0;
+    int numberOfReads0 = 0, numberOfReads1 = 0;
     for (auto read = 0 ; read < mostFrequentBases.size()-adjust ; read++){
 
         int readNumber = moreFrequence[read] + lessFrequence[read];
@@ -111,19 +115,18 @@ bool Partition::isInformative(float errorRate, bool lastReadBiased){
         if (moreFrequence[read] > threshold){
             if (mostFrequentBases[read] == -1){ //this deviates from the "all 1 theory"
                 suspiciousReads[0]++;
-                numberOfReads++;
+                numberOfReads0++;
             }
             else if (mostFrequentBases[read] == 1){ //this deviates from the "all -1 theory"
                 suspiciousReads[1]++;
-                numberOfReads++;
+                numberOfReads1++;
             }
         }
 
     }
 
     //if I have less than two/10% suspicious reads, then this partition is not informative
-    float minNumberOfReads = max(2.0, 0.1*numberOfReads);
-    if (suspiciousReads[0] < minNumberOfReads || suspiciousReads[1] < minNumberOfReads){
+    if (suspiciousReads[0] < max(2.0, 0.1*numberOfReads0) || suspiciousReads[1] < max(2.0, 0.1*numberOfReads1)){
         return false;
     }
     else{
@@ -204,6 +207,115 @@ void Partition::augmentPartition(Column& supplementaryPartition, int pos){
                     mostFrequentBases_2.push_back(mostFrequentBases[n1]);
                     moreFrequence_2.push_back(moreFrequence[n1]);
                     lessFrequence_2.push_back(lessFrequence[n1]+1);
+                }
+            }
+            idxs1_2.push_back(read);
+            it1++;
+        }
+        n1++;
+        n2++;
+    }
+    while(it1 != readIdx.end()){ //positions that existed in the old partitions that are not found in the new one
+        mostFrequentBases_2.push_back(mostFrequentBases[n1]);
+        moreFrequence_2.push_back(moreFrequence[n1]);
+        lessFrequence_2.push_back(lessFrequence[n1]);
+        idxs1_2.push_back(*it1);
+        it1++;
+        n1++;
+    }
+
+    mostFrequentBases = mostFrequentBases_2;
+    moreFrequence = moreFrequence_2;
+    lessFrequence = lessFrequence_2;
+    readIdx = idxs1_2;
+    numberOfOccurences += 1;
+}
+
+/**
+ * @brief Augment partition with a new column
+ * 
+ * @param newPar New column to add
+ * @param n01unimportant //if the column is compatible with the partition but not equivalent
+ * @param n10unimportant //if the column is compatible with the partition but not equivalent
+ * @param phased //worth 1 or -1, -1 if the column should be flipped
+ * @param pos //position of the column, -1 if among the inserted positions
+ */
+void Partition::augmentPartition2(Column &supplementaryPartition, bool n01unimportant, bool n10unimportant, int pos){
+    //first adjust pos right and pos left if pos changes the limits of the partition
+    if (pos != -1){
+        if (pos < pos_left || pos_left == -1) {pos_left = pos;}
+        if (pos > pos_right || pos_right == -1) {pos_right = pos;}
+    }
+
+    auto it1 = readIdx.begin();
+    vector<int> idxs1_2;
+    vector<short> mostFrequentBases_2;
+    vector<int> moreFrequence_2;
+    vector<int> lessFrequence_2;
+
+    int n1 = 0;
+    int n2 = 0;
+    for (auto read : supplementaryPartition.readIdxs){
+        while(it1 != readIdx.end() && *it1 < read){ //positions that existed in the old partitions that are not found here
+            mostFrequentBases_2.push_back(mostFrequentBases[n1]);
+            moreFrequence_2.push_back(moreFrequence[n1]);
+            lessFrequence_2.push_back(lessFrequence[n1]);
+            idxs1_2.push_back(*it1);
+            it1++;
+            n1++;
+        }
+
+        short s = 0;
+        if (supplementaryPartition.content[n2] == 'a'){s=-1;}
+        if (supplementaryPartition.content[n2] == 'A'){s=1;}
+        if (it1 == readIdx.end() || *it1 != read){ //then this is a new read
+            n1--; //because n1++ further down
+            if (s == 1){
+                mostFrequentBases_2.push_back(1);
+                moreFrequence_2.push_back(1);
+                lessFrequence_2.push_back(0);
+                idxs1_2.push_back(read);
+            }
+            else if (s == -1){
+                mostFrequentBases_2.push_back(-1);
+                moreFrequence_2.push_back(1);
+                lessFrequence_2.push_back(0);
+                idxs1_2.push_back(read);
+            }
+        }
+        else{ //we're looking at a read that is both old and new
+            if (s == 0){ //the new partition does not brign anything
+                mostFrequentBases_2.push_back(mostFrequentBases[n1]);
+                moreFrequence_2.push_back(moreFrequence[n1]);
+                lessFrequence_2.push_back(lessFrequence[n1]);
+            }
+            else if (mostFrequentBases[n1] == 0){ //no information on previous partition
+                mostFrequentBases_2.push_back(s);
+                moreFrequence_2.push_back(1);
+                lessFrequence_2.push_back(0);
+            }
+            else if (s == mostFrequentBases[n1]){ //both partitions agree
+                mostFrequentBases_2.push_back(mostFrequentBases[n1]);
+                moreFrequence_2.push_back(moreFrequence[n1]+1);
+                lessFrequence_2.push_back(lessFrequence[n1]);
+            }
+            else if (s == -mostFrequentBases[n1]) { //the new partition disagrees
+                if (!((s == -1 && n10unimportant) || (s == 1 && n01unimportant))){
+                    if (lessFrequence[n1]+1 > moreFrequence[n1]){ //then the consensus has changed !
+                        mostFrequentBases_2.push_back(-mostFrequentBases[n1]);
+                        moreFrequence_2.push_back(moreFrequence[n1]+1);
+                        lessFrequence_2.push_back(lessFrequence[n1]);
+                    }
+                    else{
+                        mostFrequentBases_2.push_back(mostFrequentBases[n1]);
+                        moreFrequence_2.push_back(moreFrequence[n1]);
+                        lessFrequence_2.push_back(lessFrequence[n1]+1);
+                    }
+                }
+                else { //looks like a base from a compatible yet different base, don't change anthing
+                    mostFrequentBases_2.push_back(mostFrequentBases[n1]);
+                    moreFrequence_2.push_back(moreFrequence[n1]);
+                    lessFrequence_2.push_back(lessFrequence[n1]);
                 }
             }
             idxs1_2.push_back(read);
@@ -428,7 +540,7 @@ void Partition::print(){
             if (moreFrequence[n] == 0){
                 cout << "o";
             }
-            else if (float(moreFrequence[n])/(moreFrequence[n]+lessFrequence[n]) < 0.6){
+            else if (float(moreFrequence[n])/(moreFrequence[n]+lessFrequence[n]) < 0.5){
                 cout << "!";
             }
             else if (ch == 1){
@@ -446,7 +558,7 @@ void Partition::print(){
         c++;
     }
 
-    cout << " " << numberOfOccurences << " " << pos_left << " <-> " << pos_right << endl;
+    cout << " " << numberOfOccurences << " (" << numberOfSupportivePositions <<") " << pos_left << " <-> " << pos_right << endl;
     // for (auto c = 0 ; c < mostFrequentBases.size() ; c++){
     //     cout << moreFrequence[c] << "/" << lessFrequence[c] << ";";
     // }
@@ -503,3 +615,10 @@ void Partition::new_corrected_partition(vector<short> newPartition){
     mostFrequentBases = newPartition;
 }
 
+/**
+ * @brief Increase the number of supportive positions 
+ *  Supportive positions are positions that correlate well with the partition but are not always close enough to be integrated
+ */
+void Partition::increaseSupportivePositions(){
+    numberOfSupportivePositions+=1;
+}
